@@ -5,17 +5,13 @@ create a slint live iso
 
 Configuration files for Slint Live.
 
-To build the live iso
-Open a terminal and type
-su
-slapt-get -i slackware-live 
-to install slackware-live tool which is used to create the initrd and build the iso
-You can download and install the tool also from this repo https://github.com/djemos/slackware-live.git
+To build the live iso you need to install slackware-live tool which is used to create the initrd and build the iso
+You can download and install the tool from http://www.slackel.gr/repo/source/slint/slackware-live/0.5.3/
 and copy the txz package to local folder.
 
-sli package will be automatically download and installed from repos running getpkgs.sh later. 
-Of cource you can download sli from this repo https://github.com/djemos/slint-live-installer.git 
-build it and copy the txz package to local folder.
+sli package is needed also.
+You can download sli from http://www.slackel.gr/repo/source/slint/slint-live-installer/1.2.4/
+build it the i586 version if you needed and copy the txz package to local folder.
 
 You will also need to have syslinux installed. If not then just install it from repos with slapt-get -i syslinux
 
