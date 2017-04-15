@@ -1,4 +1,5 @@
 #!/bin/bash
+# Gettext internationalization
 #
 # Copyright 2016, 2017  Dimitris Tzemos, GR
 # All rights reserved.
@@ -20,7 +21,6 @@
 #  OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 #  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#"BASED ON CODE OF BUILD_SLACKWARE-LIVE.SH FROM linux-nomad"
 AUTHOR='Dimitris Tzemos - dijemos@gmail.com'
 LICENCE='GPL v3+'
 SCRIPT=$(basename "$0")
@@ -70,8 +70,10 @@ FORMATERROR=3
 BOOTERROR=4
 INSUFFICIENTSPACE=5
 persistent_file=""
+ENCRYPT=""
 SCRIPT_NAME="$(basename $0)"
 NAME="persistent"
+ENCRYPT=""
 SVER=14.2
 
 function check_root(){
@@ -222,6 +224,9 @@ function persistent_message(){
 MSG="Do you want to create a persistent file on your drive $installmedia ?\n\
 \n\
 "
+MSG_ENCRYPT="Do you want to encrypt the persistent file ?\n\
+\n\
+"
 	
 dialog --title "Create a Persistent file" \
 	--defaultno \
@@ -254,7 +259,16 @@ else
 		persistent_file="no"
 	else
 		SIZE=$answer
-	fi  
+		dialog --title "Encrypt the persistent file" \
+	--defaultno \
+	--yesno "$MSG_ENCRYPT" 0 0
+	retval=$?
+		if [ $retval -eq 1 ] || [ $retval -eq 255 ]; then
+			ENCRYPT="no"
+		else	
+			ENCRYPT="yes"
+		fi
+	fi
 fi
 }
     
@@ -262,7 +276,10 @@ function persistent_message_ext3(){
 MSG="Do you want to create a persistent file on your drive $installmedia ?\n\
 \n\
 "
-	
+MSG_ENCRYPT="Do you want to encrypt the persistent file ?\n\
+\n\
+"
+
 dialog --title "Create a Persistent file" \
 	--defaultno \
 	--yesno "$MSG" 0 0
@@ -304,7 +321,16 @@ else
 		persistent_file="no"
 	else
 		SIZE=$answer
-	fi  
+	dialog --title "Encrypt the persistent file" \
+	--defaultno \
+	--yesno "$MSG_ENCRYPT" 0 0
+	retval=$?
+		if [ $retval -eq 1 ] || [ $retval -eq 255 ]; then
+			ENCRYPT="no"
+		else	
+			ENCRYPT="yes"
+		fi	
+	fi 
 fi
 }
 
@@ -319,12 +345,51 @@ if [ $AFTER -gt 0 ]; then
 	echo ""
 	echo "Creating persistent file 'persistent'. Please wait ..."
 	echo ""
-		if [ "$LIVEFSTYPE" == "fixed" ]; then
-			dd if=/dev/zero of="$NAME" bs=1M count=$SIZE
-		else	
-			dd if=/dev/zero of="$NAME" bs=1M count=0 seek=$SIZE
+		#if [ "$LIVEFSTYPE" == "fixed" ]; then
+		#	dd if=/dev/zero of="$NAME" bs=1M count=$SIZE
+		#else	
+		#	dd if=/dev/zero of="$NAME" bs=1M count=0 seek=$SIZE
+		#fi
+		#mkfs.ext3 -F -m 0 -L "persistent" "$NAME" && CHECK='OK'
+		
+		# Create a sparse file (not allocating any space yet):
+		dd of=${NAME} bs=1M count=0 seek=$SIZE
+		# Setup a loopback device that we can use with cryptsetup:
+		LODEV=$(losetup -f)
+		losetup $LODEV ${NAME}
+        if [ "${ENCRYPT}" = "yes" ]; then
+			# Format the loop device with LUKS:
+			echo "--- Encrypting the container file with LUKS; enter 'YES' and a passphrase..."
+			until cryptsetup -y luksFormat $LODEV ; do
+				echo ">>> Did you type two different passphrases?"
+				read -p ">>> Press [ENTER] to try again or Ctrl-C to abort ..." REPLY 
+			done
+			# Unlock the LUKS encrypted container:
+			echo "--- Unlocking the LUKS container requires your passphrase again..."
+			until cryptsetup luksOpen $LODEV $(basename ${NAME}) ; do
+				echo ">>> Did you type an incorrect passphrases?"
+				read -p ">>> Press [ENTER] to try again or Ctrl-C to abort ..." REPLY 
+			done
+			CNTDEV=/dev/mapper/$(basename ${NAME})
+			# Now we allocate blocks for the LUKS device. We write encrypted zeroes,
+			# so that the file looks randomly filled from the outside.
+			# Take care not to write more bytes than the internal size of the container:
+			CNTIS=$(( $(lsblk -b -n -o SIZE  $(readlink -f ${CNTDEV})) / 512))
+			dd if=/dev/zero of=${CNTDEV} bs=512 count=${CNTIS} || true
+		else
+			CNTDEV=$LODEV
+			# Un-encrypted container files remain sparse.
 		fi
-		mkfs.ext3 -F -m 0 -L "persistent" "$NAME" && CHECK='OK'
+		# Format the now available block device with a linux fs:
+		mkfs.ext4 ${CNTDEV} && CHECK='OK'
+		# Tune the ext4 filesystem:
+		tune2fs -m 0 -c 0 -i 0 ${CNTDEV}
+		# Don't forget to clean up after ourselves:
+		if [ "${ENCRYPT}" = "yes" ]; then
+			cryptsetup luksClose $(basename ${NAME})
+		fi
+		losetup -d ${LODEV} || true
+		
 	if [ -n "$CHECK" ]; then
 		echo ""
 		echo "The persistent file $NAME is ready."
@@ -580,7 +645,11 @@ if  check_if_file_iso_exists $isoname ; then
 	usb_message
 	create_link_for_other_distros
 	ISODIR=$(mktemp -d)
-	mount -o loop $isoname $ISODIR > /dev/null 2>&1
+	ISODIR=$(mktemp -d)
+	LODEVISO=$(losetup -f)
+	losetup $LODEVISO $isoname
+	mount $LODEVISO $ISODIR > /dev/null 2>&1
+	#mount -o loop $isoname $ISODIR > /dev/null 2>&1
 	livedirectory=$ISODIR
     if [ -f "$isoname" ] && [ -b "$installmedia" ]; then
 		livesystemsize=`du -s -m $livedirectory | sed 's/\t.*//'`
@@ -593,25 +662,28 @@ if  check_if_file_iso_exists $isoname ; then
 			echo "error: insufficant space on device '$installmedia'"
 			umount $ISODIR
 			rmdir $ISODIR
+			losetup -d $LODEVISO || true
 			exit $INSUFFICIENTSPACE
 		else
 			filesystem_message
 			if [ "$LIVEFS" == "vfat" ]; then
-				persistent_file_type
+				#persistent_file_type
 				persistent_message
 			else
-				persistent_file_type
+				#persistent_file_type
 				persistent_message_ext3
 			fi
 			install_usb $livedirectory $installmedia
+			losetup -d $LODEVISO || true
 			if [ "$persistent_file" == "yes" ]; then
 			 create_persistent
-			fi
+			fi	
 			exit $!
 		fi
 	else
 		umount $ISODIR
 		rmdir $ISODIR
+		losetup -d $LODEVISO || true
 		echo "`basename $0` --usb iso_name device"
 		exit $CMDERROR
 	fi
@@ -640,13 +712,13 @@ if  [ "$iso_arch" == "32" ] || [ "$iso_arch" == "64" ]; then
 		    umount /mnt/tmp
 		    partitionnumber=2
 			installmedia="$installdevice$partitionnumber"
-			persistent_file_type
+			#persistent_file_type
 			echo $installmedia
 			persistent_message_ext3
 		else	
 			partitionnumber=1
 			installmedia="$installdevice$partitionnumber"
-			persistent_file_type
+			#persistent_file_type
 			echo $installmedia			
 			persistent_message
 		fi
@@ -654,7 +726,7 @@ if  [ "$iso_arch" == "32" ] || [ "$iso_arch" == "64" ]; then
 			partitionnumber=1
 			installmedia="$installdevice$partitionnumber"
 		if mount $installmedia /mnt/tmp >/dev/null 2>&1; then
-			persistent_file_type
+			#persistent_file_type
 			echo $installmedia
 			if mount | grep -q "^$installmedia .* vfat "; then
 			    persistent_message

@@ -29,7 +29,7 @@ optionally create a persistent ext3 file.
 
 If the user did not do so on first installation, then he can create a
 persistent file using the --persistent option. There is now no need to
-specify the path to the iso because Slackel Live is already installed to
+specify the path to the iso because Slint Live is already installed to
 the usb key. However, you do need to specify the architecture, because
 this affects the location of the persistent file:
 
@@ -41,12 +41,19 @@ run the following command to create persistence:
   sudo sh install_on_usb.sh --persistent 64 /dev/sdc
 
 
-If you choose vfat filesystem then to use persistence features you have to create a persistent file. Persistent directory does not supported in vfat.
+If you choose vfat filesystem then to use persistence features you have to create a persistent file "persistent". Persistent directory does not supported in vfat.
 
-If you choose ext3 filesystem then you can either create a persistent file sparse (dynamically grow) or fixed (allocated space).
-Or just boot with persistent option from menus. Then a directory named persistent (default) will be created where you can keep your changes between reboots.
+If you choose ext3 filesystem then you can either create a persistent file or just boot with persistent option from menus. Then a directory named persistent (default) will be created where you can keep your changes between reboots.
 Attention: Never create the folder by hand (persistence will not work).
 Persistent home directory is also supported but it is not useful since only keep /home/$user changes. You can use this feature by changing the parameter changes=persistent to home=home
+
+Persistent file encryption is also supported. Running the script you will be asked if you want to encrypt the persistent file.
+Then just boot with persistent option from menus. System will understand that the persistent file is encrypted and ask to type the encrypt passphrase to unlock it.
+You can use the persistent file "persistent" for /home encryption. You can use this feature by changing the parameter changes=persistent to home=persistent
+You can rename the persistent file "persistent" to "whatever_you_like" and use it by changing the parameter changes=whatever_you_like or home=whatever_you_like
+
+Tip: You can create a persistent file (its name is always persistent). Then rename it to e.g. home
+	  Create again a persistent file for whole system. So you can boot with persistent option from menus to have persistent encryption for whole system or boot by changing the parameter changes=persistent to home=home to have only /home encryption.
 
 Typing:
  
@@ -69,6 +76,6 @@ will output the following help message:
   -> --persistent option creates a persistent ext3 file after
      installation, if user did not do so then
   -> specify architecture and device
-  -> No need to specify path to iso because Slackel Live is already
+  -> No need to specify path to iso because Slint Live is already
      installed
      
