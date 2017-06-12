@@ -645,7 +645,6 @@ if  check_if_file_iso_exists $isoname ; then
 	usb_message
 	create_link_for_other_distros
 	ISODIR=$(mktemp -d)
-	ISODIR=$(mktemp -d)
 	LODEVISO=$(losetup -f)
 	losetup $LODEVISO $isoname
 	mount $LODEVISO $ISODIR > /dev/null 2>&1
